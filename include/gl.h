@@ -314,3 +314,150 @@ void GlBatchEvaluator3::evaluateFunction(
     glBindFramebuffer(GL_FRAMEBUFFER, (GLuint)NULL);
 
 }
+
+
+
+
+class GlIntersectionEvaluator3 {
+    std::string vsSource, fsSource;
+    GLuint shaderProgram;
+    GLuint framebuffer, texture;
+    int textureW, textureH;
+
+public:
+    GlIntersectionEvaluator3(std::string funGlsl);
+    ~GlIntersectionEvaluator3();
+    void evaluateIntersections(size_t pn,
+        const glm::vec3 *p0, const glm::vec3 *p1, glm::vec3 *p);
+};
+
+// funGlsl must define `float fun(vec3 p)`;
+// finds the zero crossing on each segment (p0, p1), assuming fun(p0) <= 0 < fun(p1)
+GlIntersectionEvaluator3::GlIntersectionEvaluator3(std::string funGlsl) {
+    vsSource = R"(#version 300 es
+        precision highp float;
+        in vec2 aPosition;
+        in vec3 aP0;
+        in vec3 aP1;
+        out vec3 vP0;
+        out vec3 vP1;
+        void main() {
+            gl_Position = vec4(aPosition, 0.0, 1.0);
+            gl_PointSize = 1.0;
+            vP0 = aP0, vP1 = aP1;
+        }
+    )";
+    fsSource = R"(#version 300 es
+        precision highp float;
+        uniform float ZERO;  // used in loops to reduce compilation time
+        in vec3 vP0;
+        in vec3 vP1;
+        out vec4 fragColor;
+        )" + funGlsl + R"(
+
+        void main() {
+            float t0 = 0.0, t1 = 1.0;
+            for (int i = int(ZERO); i < 16; i++) {
+                float tc = 0.5 * (t0 + t1);
+                if (fun(mix(vP0, vP1, tc)) <= 0.0) t0 = tc;
+                else t1 = tc;
+            }
+            float t = clamp(0.5 * (t0 + t1), 0.01, 0.99);
+            fragColor = vec4(mix(vP0, vP1, t), 1.0);
+        }
+    )";
+    // printf("%s\n", fsSource.c_str());
+    shaderProgram = createShaderProgram(&vsSource[0], &fsSource[0]);
+
+    textureW = 256;
+    textureH = 256;
+
+    glGenFramebuffers(1, &framebuffer);
+    glBindFramebuffer(GL_FRAMEBUFFER, framebuffer);
+    glGenTextures(1, &texture);
+    glBindTexture(GL_TEXTURE_2D, texture);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA32F, textureW, textureH, 0, GL_RGBA, GL_FLOAT, nullptr);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, texture, 0);
+    if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE) {
+        printf("Failed to create framebuffer.\n");
+        throw "Failed to create framebuffer.";
+    }
+    glBindFramebuffer(GL_FRAMEBUFFER, (GLuint)NULL);
+}
+
+GlIntersectionEvaluator3::~GlIntersectionEvaluator3() {
+    glDeleteShader(shaderProgram);
+    glDeleteTextures(1, &texture);
+    glDeleteFramebuffers(1, &framebuffer);
+}
+
+
+void GlIntersectionEvaluator3::evaluateIntersections(
+    size_t pn, const glm::vec3 *p0, const glm::vec3 *p1, glm::vec3 *p) {
+
+    if (shaderProgram == -1) {
+        printf("Warning: no shader program linked\n");
+        for (size_t i = 0; i < pn; i++)
+            p[i] = 0.5f * (p0[i] + p1[i]);
+        return;
+    }
+
+    glBindFramebuffer(GL_FRAMEBUFFER, framebuffer);
+    glViewport(0, 0, textureW, textureH);
+    glUseProgram(shaderProgram);
+    glUniform1f(glGetUniformLocation(shaderProgram, "ZERO"), 0.0f);
+    glDisable(GL_DEPTH_TEST);
+    glDisable(GL_BLEND);
+
+    GLuint vbo;
+    glGenBuffers(1, &vbo);
+    GLuint vp0, vp1;
+    glGenBuffers(1, &vp0);
+    glGenBuffers(1, &vp1);
+
+    size_t batch_size = textureW * textureH;
+    for (size_t batchi = 0; batchi < pn; batchi += batch_size) {
+        size_t batchn = std::min(batch_size, pn - batchi);
+
+        glBindBuffer(GL_ARRAY_BUFFER, vbo);
+        std::vector<glm::vec2> coords(batchn);
+        for (int i = 0; i < batchn; i++) {
+            float x = i % textureW, y = i / textureW;
+            coords[i] = (glm::vec2(x, y) + 0.5f) / glm::vec2(textureW, textureH) * 2.0f - 1.0f;
+        }
+        glBufferData(GL_ARRAY_BUFFER, sizeof(glm::vec2) * batchn, coords.data(), GL_STATIC_DRAW);
+        GLint posAttrib = glGetAttribLocation(shaderProgram, "aPosition");
+        glVertexAttribPointer(posAttrib, 2, GL_FLOAT, GL_FALSE, 0, 0);
+        glEnableVertexAttribArray(posAttrib);
+
+        glBindBuffer(GL_ARRAY_BUFFER, vp0);
+        glBufferData(GL_ARRAY_BUFFER, sizeof(glm::vec3) * batchn, &p0[batchi], GL_STATIC_DRAW);
+        GLint p0Attrib = glGetAttribLocation(shaderProgram, "aP0");
+        glVertexAttribPointer(p0Attrib, 3, GL_FLOAT, GL_FALSE, 0, 0);
+        glEnableVertexAttribArray(p0Attrib);
+
+        glBindBuffer(GL_ARRAY_BUFFER, vp1);
+        glBufferData(GL_ARRAY_BUFFER, sizeof(glm::vec3) * batchn, &p1[batchi], GL_STATIC_DRAW);
+        GLint p1Attrib = glGetAttribLocation(shaderProgram, "aP1");
+        glVertexAttribPointer(p1Attrib, 3, GL_FLOAT, GL_FALSE, 0, 0);
+        glEnableVertexAttribArray(p1Attrib);
+
+        glDrawArrays(GL_POINTS, 0, batchn);
+
+        std::vector<glm::vec4> pixels(batch_size);
+        glReadPixels(0, 0, textureW, textureH, GL_RGBA, GL_FLOAT, pixels.data());
+        for (int i = 0; i < batchn; i++)
+            p[batchi+i] = glm::vec3(pixels[i]);
+    }
+
+    glDisableVertexAttribArray(glGetAttribLocation(shaderProgram, "aPosition"));
+    glDisableVertexAttribArray(glGetAttribLocation(shaderProgram, "aP0"));
+    glDisableVertexAttribArray(glGetAttribLocation(shaderProgram, "aP1"));
+    glDeleteBuffers(1, &vbo);
+    glDeleteBuffers(1, &vp0);
+    glDeleteBuffers(1, &vp1);
+    glBindFramebuffer(GL_FRAMEBUFFER, (GLuint)NULL);
+
+}

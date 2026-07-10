@@ -66,6 +66,22 @@ void generateMesh(
             v[i] = std::isfinite(v[i]) ? fmax(v[i], clip-1.0f) : clip;
         }
     };
+    // same field as Fs, fused into a single shader with a binary search
+    // for the intersection of the isosurface with a line segment
+    char clipGlsl[512];
+    snprintf(clipGlsl, sizeof(clipGlsl), R"(
+float fun(vec3 p) {
+    float v = funRaw(p.x, p.y, p.z);
+    vec3 dp = abs(p - vec3(%g,%g,%g)) / vec3(%g,%g,%g);
+    float clip = max(dp.x, max(dp.y, dp.z));
+    return isnan(v) || isinf(v) ? clip : max(v, clip - 1.0);
+}
+)", bc.x, bc.y, bc.z, br.x, br.y, br.z);
+    GlIntersectionEvaluator3 intersector(funDeclaration + clipGlsl);
+    MeshgenTetImplicit::IntersectionFBatch FIntersect = [&](
+        size_t n, const vec3 *p0, const vec3 *p1, vec3 *p) {
+        intersector.evaluateIntersections(n, p0, p1, p);
+    };
     auto constraint = [=](vec3 p) {
         p -= bc;
         return -vec3(
@@ -108,7 +124,7 @@ void generateMesh(
     const int nd = MeshgenParams::nd;
     vec3 expd = 1.0f + 0.05f/vec3(bn-1)*exp2f(-nd);
     MeshgenTetImplicit::marchingCubes(
-        Fs, bc-expd*br, bc+expd*br,
+        Fs, FIntersect, bc-expd*br, bc+expd*br,
         bn, nd,
         verts, faces, isConstrained0
     );

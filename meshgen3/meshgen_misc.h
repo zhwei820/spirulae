@@ -29,6 +29,8 @@ MESHGEN_MISC_NS_START
 
 typedef std::function<float(float, float, float)> ScalarFieldF;
 typedef std::function<void(size_t, const vec3*, float*)> ScalarFieldFBatch;
+// find the zero crossing on each segment (p0, p1), assuming F(p0) <= 0 < F(p1)
+typedef std::function<void(size_t, const vec3*, const vec3*, vec3*)> IntersectionFBatch;
 
 
 // for maps/sets

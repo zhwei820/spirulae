@@ -62,7 +62,8 @@ const ivec3 MC_FACE_DIR[6] = {
 
 
 void marchingCubes(
-    ScalarFieldFBatch Fs, vec3 b0, vec3 b1, ivec3 bn, int nd,
+    ScalarFieldFBatch Fs, IntersectionFBatch FIntersect,
+    vec3 b0, vec3 b1, ivec3 bn, int nd,
     std::vector<vec3> &vertices, std::vector<ivec3> &trigs,
     std::vector<bool> isConstrained[3]
 ) {
@@ -300,46 +301,47 @@ void marchingCubes(
 
     float time4 = getTimePast();
 
-    // get interpolated vertices
+    // get vertices on edges
     vertices.resize(edges.size());
-#if 0
-    // linear interpolation
-    for (int i = 0; i < (int)edges.size(); i++) {
-        int i1 = (int)(edges[i] >> 32), i2 = (int)edges[i];
-        float v1 = samples[i1];
-        float v2 = samples[i2];
-        float t = v1 / (v1 - v2);
-        vertices[i] = idxToPoint(i1) * (1.0f-t) + idxToPoint(i2) * t;
+    if (FIntersect) {
+        // binary search in a fused shader
+        std::vector<vec3> edgep0(edges.size()), edgep1(edges.size());
+        for (int i = 0; i < (int)edges.size(); i++) {
+            int i1 = (int)(edges[i] >> 32), i2 = (int)edges[i];
+            if (samples[i1] > 0.0f) std::swap(i1, i2);
+            edgep0[i] = idxToPoint(i1), edgep1[i] = idxToPoint(i2);
+        }
+        FIntersect(edges.size(), &edgep0[0], &edgep1[0], &vertices[0]);
     }
-#else
-    // quadratic interpolation
-    std::vector<vec3> edgep(edges.size());
-    std::vector<ivec2> edgei(edges.size());
-    std::vector<float> edgevc(edges.size());
-    for (int i = 0; i < (int)edges.size(); i++) {
-        int i1 = (int)(edges[i] >> 32), i2 = (int)edges[i];
-        edgei[i] = ivec2(i1, i2);
-        edgep[i] = 0.5f*(idxToPoint(i1)+idxToPoint(i2));
+    else {
+        // quadratic interpolation
+        std::vector<vec3> edgep(edges.size());
+        std::vector<ivec2> edgei(edges.size());
+        std::vector<float> edgevc(edges.size());
+        for (int i = 0; i < (int)edges.size(); i++) {
+            int i1 = (int)(edges[i] >> 32), i2 = (int)edges[i];
+            edgei[i] = ivec2(i1, i2);
+            edgep[i] = 0.5f*(idxToPoint(i1)+idxToPoint(i2));
+        }
+        Fs(edgep.size(), &edgep[0], &edgevc[0]);
+        for (int i = 0; i < (int)edgep.size(); i++) {
+            typedef double scalar;
+            scalar t = (scalar)(0.5);
+            scalar v0 = (scalar)samples[edgei[i].x];
+            scalar v1 = (scalar)samples[edgei[i].y];
+            scalar vc = (scalar)edgevc[i];
+            scalar a = (t-(scalar)1) * v0 - t * v1 + vc;
+            scalar b = ((scalar)1-t*t) * v0 + t*t * v1 - vc;
+            scalar c = (t*t-t) * v0;
+            scalar d = sqrt(fmax(b*b-(scalar)4*a*c, (scalar)0));
+            float t1 = 0.5f*float((-b+d)/a);
+            float t2 = 0.5f*float((-b-d)/a);
+            float t_ = a == (scalar)0 ? (float)(-c / b) :
+                fabs(t1-0.5f) < fabs(t2 - 0.5f) ? t1 : t2;
+            t_ = clamp(t_, 0.01f, 0.99f);
+            vertices[i] = mix(idxToPoint(edgei[i].x), idxToPoint(edgei[i].y), t_);
+        }
     }
-    Fs(edgep.size(), &edgep[0], &edgevc[0]);
-    for (int i = 0; i < (int)edgep.size(); i++) {
-        typedef double scalar;
-        scalar t = (scalar)(0.5);
-        scalar v0 = (scalar)samples[edgei[i].x];
-        scalar v1 = (scalar)samples[edgei[i].y];
-        scalar vc = (scalar)edgevc[i];
-        scalar a = (t-(scalar)1) * v0 - t * v1 + vc;
-        scalar b = ((scalar)1-t*t) * v0 + t*t * v1 - vc;
-        scalar c = (t*t-t) * v0;
-        scalar d = sqrt(fmax(b*b-(scalar)4*a*c, (scalar)0));
-        float t1 = 0.5f*float((-b+d)/a);
-        float t2 = 0.5f*float((-b-d)/a);
-        float t_ = a == (scalar)0 ? (float)(-c / b) :
-            fabs(t1-0.5f) < fabs(t2 - 0.5f) ? t1 : t2;
-        t_ = clamp(t_, 0.01f, 0.99f);
-        vertices[i] = mix(idxToPoint(edgei[i].x), idxToPoint(edgei[i].y), t_);
-    }
-#endif
 
     float time5 = getTimePast();
     printf("marchingCubes: %.2g + %.2g + %.2g + %.2g + %.2g = %.2g secs\n",
