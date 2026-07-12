@@ -19,6 +19,12 @@
 
 <body>
     <canvas id="canvas"></canvas>
+    <div id="axis-x-label"
+        style="position:fixed;display:none;pointer-events:none;transform:translate(-50%,-50%);font-family:monospace;font-size:16px;font-weight:bold;color:rgb(250,50,80);text-shadow:0 1px 3px rgba(0,0,0,0.4);">
+        Re</div>
+    <div id="axis-y-label"
+        style="position:fixed;display:none;pointer-events:none;transform:translate(-50%,-50%);font-family:monospace;font-size:16px;font-weight:bold;color:rgb(140,220,0);text-shadow:0 1px 3px rgba(0,0,0,0.4);">
+        Im</div>
 
     <div id="legend">
         <div id="fps"></div>
@@ -28,8 +34,6 @@
                 <line id="axis-x" x1="0" y1="0" x2="0" y2="0" stroke="rgb(250,50,80)" stroke-width="2.5"></line>
                 <line id="axis-y" x1="0" y1="0" x2="0" y2="0" stroke="rgb(140,220,0)" stroke-width="2.5"></line>
                 <line id="axis-z" x1="0" y1="0" x2="0" y2="0" stroke="rgb(40,140,250)" stroke-width="2.5"></line>
-                <text id="axis-x-label" fill="rgb(250,50,80)" font-family="monospace" font-size="12" font-weight="bold" text-anchor="middle" pointer-events="none">Re</text>
-                <text id="axis-y-label" fill="rgb(140,220,0)" font-family="monospace" font-size="12" font-weight="bold" text-anchor="middle" pointer-events="none">Im</text>
             </g>
             <text id="legend-text" x="40" y="68" text-anchor="middle" alignment-baseline="top" stroke="none"
                 fill="rgba(255,255,255,0.7)" font-family="monospace" font-size="1.0em"></text>

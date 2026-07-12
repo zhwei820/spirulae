@@ -56,6 +56,38 @@ function calcLightDirection(transformMatrix, lightTheta, lightPhi) {
     return l;
 }
 
+// labels attached to the positive ends of in-scene axes (e.g. Re/Im in complex3)
+function renderAxesLabels(state, mat) {
+    var labels = [
+        document.getElementById("axis-x-label"),
+        document.getElementById("axis-y-label")
+    ];
+    if (!labels[0] && !labels[1]) return;
+    var showAxes = state.lAxes == 1 || state.lAxes == 2;
+    var offset = {
+        x: 2.0 * state.screenCenter.x - 1.0,
+        y: 2.0 * state.screenCenter.y - 1.0
+    };
+    for (var i = 0; i < 2; i++) {
+        if (!labels[i]) continue;
+        var s = 1.02 * state.clipSize[i];
+        var w = s * mat[i][3] + mat[3][3];
+        if (!showAxes || !(w > 0.0)) {
+            labels[i].style.display = "none";
+            continue;
+        }
+        var x = (s * mat[i][0] + mat[3][0]) / w + offset.x;
+        var y = (s * mat[i][1] + mat[3][1]) / w + offset.y;
+        var px = (x + 1.0) * 0.5 * state.width;
+        var py = (1.0 - y) * 0.5 * state.height;
+        px = Math.max(16, Math.min(px, state.width - 16));
+        py = Math.max(16, Math.min(py, state.height - 16));
+        labels[i].style.display = "block";
+        labels[i].style.left = px + "px";
+        labels[i].style.top = py + "px";
+    }
+}
+
 // set legend
 function renderLegend(state) {
     // calculate axis length
@@ -87,14 +119,8 @@ function renderLegend(state) {
         // if (!(z > 0. && z < 1.)) x = y = 0.;
         axes[i].setAttribute("x2", x);
         axes[i].setAttribute("y2", -y);
-        var label = document.getElementById(["axis-x-label", "axis-y-label", "axis-z-label"][i]);
-        if (label) {
-            var len = Math.hypot(x, y);
-            var d = Math.max(Math.min(len + 10.0, 32.0), 15.0);
-            label.setAttribute("x", len > 1e-6 ? x * d / len : 0);
-            label.setAttribute("y", (len > 1e-6 ? -y * d / len : 0) + 4);
-        }
     }
+    renderAxesLabels(state, mat);
     // set legend
     function toSuperscript(num) {
         num = "" + num;
