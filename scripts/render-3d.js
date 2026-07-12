@@ -87,6 +87,13 @@ function renderLegend(state) {
         // if (!(z > 0. && z < 1.)) x = y = 0.;
         axes[i].setAttribute("x2", x);
         axes[i].setAttribute("y2", -y);
+        var label = document.getElementById(["axis-x-label", "axis-y-label", "axis-z-label"][i]);
+        if (label) {
+            var len = Math.hypot(x, y);
+            var d = Math.min(len + 9.0, 33.0);
+            label.setAttribute("x", len > 1e-6 ? x * d / len : 0);
+            label.setAttribute("y", (len > 1e-6 ? -y * d / len : 0) + 3);
+        }
     }
     // set legend
     function toSuperscript(num) {

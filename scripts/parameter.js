@@ -236,17 +236,17 @@ function UniformSlider(name, id, vmin, vmax, v0) {
 }
 
 // add one on click
-function ClickableObject(name, id, period) {
+function ClickableObject(name, id, period, initial = 0) {
     this.name = name;
     this.element = document.getElementById(id);
     this.period = period;
-    this.count = 0;
+    this.count = initial;
     var clicker = this;
     this.getValue = function () {
         return clicker.count % period;
     };
     this.setValue = function(value) {
-        if (value === null) value = 0;
+        if (value === null) value = initial;
         if (isFinite(value))
             clicker.count = value % period;
         state[clicker.name] = clicker.count;

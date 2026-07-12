@@ -70,7 +70,7 @@ document.body.onload = function (event) {
         new UniformSlider("rPhi", "slider-phi", 0, Math.PI, Math.PI / 6.0),
         new UniformSlider("rZScale", "slider-zscale", 0.01, 0.99, 0.5),
         new UniformSlider("rBrightness", "slider-brightness", 0.01, 0.99, 0.7),
-        new ClickableObject('lAxes', 'axis-circle', 4),
+        new ClickableObject('lAxes', 'axis-circle', 4, 1),
     ]);
     // UpdateFunctionInputConfig.complexMode = true;
     UpdateFunctionInputConfig.implicitMode = false;
