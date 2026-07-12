@@ -90,9 +90,9 @@ function renderLegend(state) {
         var label = document.getElementById(["axis-x-label", "axis-y-label", "axis-z-label"][i]);
         if (label) {
             var len = Math.hypot(x, y);
-            var d = Math.min(len + 9.0, 33.0);
+            var d = Math.max(Math.min(len + 10.0, 32.0), 15.0);
             label.setAttribute("x", len > 1e-6 ? x * d / len : 0);
-            label.setAttribute("y", (len > 1e-6 ? -y * d / len : 0) + 3);
+            label.setAttribute("y", (len > 1e-6 ? -y * d / len : 0) + 4);
         }
     }
     // set legend
