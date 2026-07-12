@@ -12,6 +12,7 @@ uniform vec3 uClipBox;
 
 uniform float rBrightness;
 uniform float rZScale;
+uniform int lAxes;
 
 uniform float ZERO;  // used in loops to reduce compilation time
 #define PI 3.1415926
@@ -58,6 +59,10 @@ bool clipIntersection(vec3 ro, vec3 rd, out float tn, out float tf) {
     if (tn > tf) return false;
     return true;
 }
+bool isInClip(vec3 p) {
+    vec3 b = 0.8*uClipBox;
+    return abs(p.x) < b.x && abs(p.y) < b.y && abs(p.z) < b.z;
+}
 #elif {%CLIP%}==2
 bool clipIntersection(vec3 ro, vec3 rd, out float t1, out float t2) {
 	float a = dot(rd/uClipBox,rd/uClipBox);
@@ -69,6 +74,14 @@ bool clipIntersection(vec3 ro, vec3 rd, out float t1, out float t2) {
 	t1 = (b-delta)/a, t2 = (b+delta)/a;
 	if (t1>t2) { float t=t1; t1=t2; t2=t;}
 	return true;
+}
+bool isInClip(vec3 p) {
+    vec3 q = p / uClipBox;
+    return dot(q, q) < 1.0;
+}
+#else
+bool isInClip(vec3 p) {
+    return true;
 }
 #endif
 
@@ -166,6 +179,9 @@ float grid1(vec3 p, vec3 n, float w) {
     // return min(min(a.x,a.y),a.z);
     return ((a.x+1.)*(a.y+1.)*(a.z+1.)-1.)/7.;
 }
+float getGridScale(vec3 p) {
+    return 2.5 / dot(inverse(transpose(transformMatrix))[3], vec4(p, 1));
+}
 float grid(vec3 p, vec3 n) {
     float ls = log(uScale) / log(10.);
     float fs = pow(ls - floor(ls), 1.0);
@@ -211,7 +227,8 @@ vec4 calcColor(vec3 ro, vec3 rd, float t) {
 }
 
 // Without opacity, finds the zero using bisection search
-vec3 vSolid(in vec3 ro, in vec3 rd, float t0, float t1) {
+vec3 vSolid(in vec3 ro, in vec3 rd, float t0, float t1, out float tHit) {
+    tHit = 1.0;
     // raymarching - https://www.desmos.com/calculator/mhxwoieyph
     float t = t0, dt = STEP_SIZE;
     float v = 0.0, v0 = v, v00 = v, v1;
@@ -233,6 +250,7 @@ vec3 vSolid(in vec3 ro, in vec3 rd, float t0, float t1) {
                 vec3 albedo = vec3(1,0,0);
                 if (bool({%GRID%}))
                     albedo *= grid(screenToWorld(ro+rd*t), vec3(sqrt(0.33)));
+                tHit = 0.5*(t0+t1);
                 return mix(BACKGROUND_COLOR, albedo, fade(0.5*(t0+t1)));
             }
             old_dvdt = dvdt;
@@ -259,6 +277,7 @@ vec3 vSolid(in vec3 ro, in vec3 rd, float t0, float t1) {
         }
         if (++i >= MAX_STEP || t > t1) return BACKGROUND_COLOR;
     }
+    tHit = t;
     return calcColor(ro, rd, t).xyz;
 }
 
@@ -272,9 +291,10 @@ void main(void) {
     float pad1 = max(STEP_SIZE, 1./255.);
     float pad0 = pad1 + randf()/255.;
     vec3 col = BACKGROUND_COLOR;
-#if {%CLIP%}
+    float tHit = 1.0;
     vec3 ro_w = screenToWorld(ro_s);
     vec3 rd_w = screenToWorld(ro_s+rd_s)-ro_w;
+#if {%CLIP%}
     float t0, t1;
     if (clipIntersection(ro_w, rd_w, t0, t1)) {
         t0 = dot(worldToScreen(ro_w+t0*rd_w)-ro_s, rd_s);
@@ -283,17 +303,61 @@ void main(void) {
         tt.z = max(t0, 0.0); tt.w = min(t1, 1.0);
         col = vSolid(ro_s, rd_s,
             tt.z>=254./255.?1.: max(tt.x-pad0, max(tt.z, 0.0)),
-            min(tt.y+pad1, min(tt.w, 1.0))
+            min(tt.y+pad1, min(tt.w, 1.0)),
+            tHit
         );
     }
     else col = clamp(mix(col, vec3(0.5), -10.0), 0.0, 1.0);
 #else
     col = vSolid(ro_s, rd_s,
         tt.z>=254./255.?1.: max(tt.x-pad0, max(tt.z, 0.0)),
-        min(tt.y+pad1, min(tt.w, 1.0))
+        min(tt.y+pad1, min(tt.w, 1.0)),
+        tHit
     );
 #endif
     // vec3 col = vSolid(ro, rd, t01.x==1.?1.:max(t01.x-pad, 0.0), min(t01.y+pad, 1.0));
+
+    // real/imaginary axes and grid
+    if (lAxes > 0) {
+        const vec3 X_COL = pow(vec3(0.98, 0.2, 0.31), vec3(2.2));
+        const vec3 Y_COL = pow(vec3(0.55, 0.86, 0.), vec3(2.2));
+        rd_w = normalize(rd_w);
+        float tw = -ro_w.z / rd_w.z;
+        float tmaxw = dot(screenToWorld(ro_s+tHit*rd_s)-ro_w, rd_w);
+        if (tw > 0.0 && tw < tmaxw) {
+            float ts = dot(worldToScreen(ro_w+tw*rd_w)-ro_s, normalize(rd_s));
+            vec3 p1 = ro_w + tw * rd_w;
+            if (isInClip(p1/1.25)) {
+                float grid_alpha = smoothstep(0.65, 0.85, grid(p1, vec3(0,0,1)));
+                grid_alpha = pow(grid_alpha, 2.0);
+                grid_alpha = 1.0 - clamp(grid_alpha, 0.4, 0.7);
+                float lightmode = dot(BACKGROUND_COLOR,vec3(1./3.));
+                grid_alpha *= 0.5 + 0.5*lightmode;
+                vec3 grid_col = 0.4-0.3*BACKGROUND_COLOR;
+                float scale = getGridScale(p1);
+                vec3 axis_col = vec3(0.8-0.2*BACKGROUND_COLOR);
+                if (lAxes == 1 || lAxes == 2) {
+                vec3 paxis = abs(p1)*scale / 0.022;
+                    if (paxis.y < 1.0 && paxis.y < paxis.x && (lAxes == 1 || p1.x > 0.0)) {
+                        axis_col *= X_COL;
+                        grid_alpha = 1.0;
+                    }
+                    if (paxis.x < 1.0 && paxis.x < paxis.y && (lAxes == 1 || p1.y > 0.0)) {
+                        axis_col *= Y_COL;
+                        grid_alpha = 1.0;
+                    }
+                }
+                if (grid_alpha == 1.0)
+                    grid_col = axis_col,
+                    grid_alpha = 0.6+0.35*lightmode;
+                else if (!isInClip(p1))
+                    grid_alpha = 0.0;
+                grid_col = mix(grid_col, BACKGROUND_COLOR, 1.0-fade(ts));
+                col = mix(col, grid_col, grid_alpha);
+            }
+        }
+    }
+
     col = (col*(2.51*col+0.03))/(col*(2.43*col+0.59)+0.14);
     col = pow(col, vec3(1.0/2.2));
     col -= vec3(1.5/255.)*fract(0.13*gl_FragCoord.x*gl_FragCoord.y);  // reduce "stripes"
