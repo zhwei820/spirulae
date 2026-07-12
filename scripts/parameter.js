@@ -414,6 +414,9 @@ function initParameters(parameters) {
             if (control.style.display == "none")
                 fps.style.display = control.style.display = "block";
             else fps.style.display = control.style.display = "none";
+            let show = document.getElementById("control-show");
+            if (show) show.style.display =
+                control.style.display == "none" ? "block" : "none";
         }
     });
 }
