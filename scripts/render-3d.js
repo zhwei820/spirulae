@@ -63,12 +63,9 @@ function renderAxesLabels(state, mat) {
         document.getElementById("axis-y-label")
     ];
     if (!labels[0] && !labels[1]) return;
-    if (typeof renderer == 'object' && renderer.hzViews != null) {
-        // multiple synchronized views: per-view captions are shown instead
-        for (var i = 0; i < 2; i++)
-            if (labels[i]) labels[i].style.display = "none";
-        return;
-    }
+    var nViews = (typeof renderer == 'object' && renderer.hzViews != null) ?
+        renderer.hzViews.length : 1;
+    var viewWidth = state.width / nViews;
     var showAxes = state.lAxes == 1 || state.lAxes == 2;
     var offset = {
         x: 2.0 * state.screenCenter.x - 1.0,
@@ -76,21 +73,34 @@ function renderAxesLabels(state, mat) {
     };
     for (var i = 0; i < 2; i++) {
         if (!labels[i]) continue;
+        // one copy of the label per view
+        if (labels[i].viewClones == undefined)
+            labels[i].viewClones = [];
+        while (labels[i].viewClones.length < nViews - 1) {
+            var clone = labels[i].cloneNode(true);
+            clone.removeAttribute("id");
+            document.body.appendChild(clone);
+            labels[i].viewClones.push(clone);
+        }
+        var copies = [labels[i]].concat(labels[i].viewClones);
         var s = 1.02 * state.clipSize[i];
         var w = s * mat[i][3] + mat[3][3];
         if (!showAxes || !(w > 0.0)) {
-            labels[i].style.display = "none";
+            for (var v = 0; v < copies.length; v++)
+                copies[v].style.display = "none";
             continue;
         }
         var x = (s * mat[i][0] + mat[3][0]) / w + offset.x;
         var y = (s * mat[i][1] + mat[3][1]) / w + offset.y;
-        var px = (x + 1.0) * 0.5 * state.width;
+        var px = (x + 1.0) * 0.5 * viewWidth;
         var py = (1.0 - y) * 0.5 * state.height;
-        px = Math.max(16, Math.min(px, state.width - 16));
+        px = Math.max(16, Math.min(px, viewWidth - 16));
         py = Math.max(16, Math.min(py, state.height - 16));
-        labels[i].style.display = "block";
-        labels[i].style.left = px + "px";
-        labels[i].style.top = py + "px";
+        for (var v = 0; v < copies.length; v++) {
+            copies[v].style.display = "block";
+            copies[v].style.left = (v * viewWidth + px) + "px";
+            copies[v].style.top = py + "px";
+        }
     }
 }
 
