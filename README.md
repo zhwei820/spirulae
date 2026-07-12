@@ -14,6 +14,18 @@ The name "Spirulae" comes from the name of a [deep-ocean cephalopod mollusk](htt
 
 ----
 
+## Running Locally
+
+The graphers load shaders and help files at runtime via XHR, so opening the HTML files directly from the filesystem (`file://`) fails with CORS errors. Serve the repository over HTTP instead:
+
+```bash
+python3 -m http.server 8000
+```
+
+Then open http://localhost:8000/ in a browser (or a specific grapher, e.g. http://localhost:8000/complex3/).
+
+----
+
 ## Features
 
 The equation parser implements the following features:

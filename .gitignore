@@ -1,3 +1,4 @@
 .vscode/
 glm/
 *.wasm.map
+agentic/reflect

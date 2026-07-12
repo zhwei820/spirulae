@@ -286,10 +286,11 @@ function setParameters(parameters, dict) {
 function initFunctionSelector() {
     let funSelect = document.getElementById("builtin-functions");
     let funInput = document.getElementById("equation-input");
-    var initialExpr = "";
-    try {  // check if input is a built-in function
-        initialExpr = localStorage.getItem(NAME + "input");
-        if (initialExpr == null) throw initialExpr;
+    var initialExpr = localStorage.getItem(NAME + "input");
+    if (initialExpr == null) {  // no saved input, use default
+        funSelect.childNodes[1].selected = true;
+    }
+    else try {  // check if input is a built-in function
         funSelect.childNodes[0].setAttribute("value", initialExpr);
         var selectId = 0;
         for (var i = 1; i < funSelect.childNodes.length; i++) {
@@ -334,10 +335,12 @@ function initStateSelector() {
         }
     }
     if (!stateSet) {
-        var initialExpr = "";
-        try {  // check if input is a built-in function
-            initialExpr = localStorage.getItem(NAME + "input");
-            if (initialExpr == null) throw initialExpr;
+        var initialExpr = localStorage.getItem(NAME + "input");
+        if (initialExpr == null) {  // no saved input, use default
+            stateSelect.childNodes[1].selected = true;
+            setState(presetStates[stateSelect.value]);
+        }
+        else try {  // check if input is a built-in function
             stateSelect.childNodes[0].selected = true;
             funInput.value = initialExpr.replaceAll(";", "\n");
             updateFunctionInput(true);
