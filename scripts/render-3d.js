@@ -1,9 +1,9 @@
 "use strict";
 
 function calcTransformMatrix(state, inverse = true,
-        screenCenter = { x: 0.5, y: 0.5 }) {
+        screenCenter = { x: 0.5, y: 0.5 }, aspect = null) {
     var sc = (state.height / Math.min(state.width, state.height)) / state.scale;
-    var aspect = canvas.width / canvas.height;
+    if (aspect == null) aspect = canvas.width / canvas.height;
     var fov = (typeof state.fov == 'number' && isFinite(state.fov)) ?
             state.fov : 0.25 * Math.PI;
     sc *= Math.tan(0.125*Math.PI) / Math.tan(0.5*fov);
@@ -63,6 +63,12 @@ function renderAxesLabels(state, mat) {
         document.getElementById("axis-y-label")
     ];
     if (!labels[0] && !labels[1]) return;
+    if (typeof renderer == 'object' && renderer.hzViews != null) {
+        // multiple synchronized views: per-view captions are shown instead
+        for (var i = 0; i < 2; i++)
+            if (labels[i]) labels[i].style.display = "none";
+        return;
+    }
     var showAxes = state.lAxes == 1 || state.lAxes == 2;
     var offset = {
         x: 2.0 * state.screenCenter.x - 1.0,
@@ -90,6 +96,9 @@ function renderAxesLabels(state, mat) {
 
 // set legend
 function renderLegend(state) {
+    var nViews = (typeof renderer == 'object' && renderer.hzViews != null) ?
+        renderer.hzViews.length : 1;
+    var viewWidth = state.width / nViews;
     // calculate axis length
     const targetLength = 36;
     var targetL = targetLength / (0.5 * Math.min(state.width, state.height) * state.scale);
@@ -105,7 +114,8 @@ function renderLegend(state) {
     ];
     let yup_checkbox = document.getElementById("checkbox-yup");
     let yup = yup_checkbox && yup_checkbox.checked;
-    let mat = calcTransformMatrix(state, false);
+    let mat = calcTransformMatrix(state, false, { x: 0.5, y: 0.5 },
+        nViews == 1 ? null : viewWidth / state.height);
     // set axes
     let ij = yup ? [0, 2, -1] : [0, 1, 2];
     for (var i = 0; i < 3; i++) {
@@ -113,7 +123,7 @@ function renderLegend(state) {
         var s = l * Math.sign(ij[i] + 1e-6);
         s *= Math.min(i == 2 ? calcZScale() : 1.0, 10.);
         var m = s * mat[j][3] + mat[3][3];
-        var x = (s * mat[j][0] + mat[3][0]) / m * (0.5 * state.width);
+        var x = (s * mat[j][0] + mat[3][0]) / m * (0.5 * viewWidth);
         var y = (s * mat[j][1] + mat[3][1]) / m * (0.5 * state.height);
         var z = (s * mat[j][2] + mat[3][2]) / m;
         // if (!(z > 0. && z < 1.)) x = y = 0.;

@@ -11,13 +11,22 @@ var renderer = {
     aaSource: "",
     positionBuffer: null,
     premarchProgram: null,
+    premarchPrograms: null,
     premarchTarget: null,
     poolProgram: null,
     poolTarget: null,
     raymarchProgram: null,
+    raymarchPrograms: null,
     antiAliaser: null,
     timerExt: null,
+    // when non-null, an array of {%HZ%} expressions rendered
+    // side-by-side in synchronized viewports (set before initMain)
+    hzViews: null,
 };
+
+function getHzViewCount() {
+    return renderer.hzViews == null ? 1 : renderer.hzViews.length;
+}
 
 // call this function to re-render
 async function drawScene(state, transformMatrix, lightDir) {
@@ -54,66 +63,75 @@ async function drawScene(state, transformMatrix, lightDir) {
     gl.clearColor(0, 0, 0, 1);
     gl.clear(gl.COLOR_BUFFER_BIT);
 
-    // premarch
-    gl.viewport(0, 0, state.premarchWidth, state.premarchHeight);
-    gl.useProgram(renderer.premarchProgram);
-    gl.bindFramebuffer(gl.FRAMEBUFFER, renderer.premarchTarget.framebuffer);
-    setPositionBuffer(gl, renderer.premarchProgram);
-    gl.uniform1f(gl.getUniformLocation(renderer.premarchProgram, "ZERO"), 0.0);
-    gl.uniformMatrix4fv(
-        gl.getUniformLocation(renderer.premarchProgram, "transformMatrix"),
-        false,
-        mat4ToFloat32Array(transformMatrix));
-    gl.uniform1f(gl.getUniformLocation(renderer.premarchProgram, "iTime"), state.iTime);
-    gl.uniform2f(gl.getUniformLocation(renderer.premarchProgram, "screenCenter"),
-        state.screenCenter.x, state.screenCenter.y);
-    gl.uniform1f(gl.getUniformLocation(renderer.premarchProgram, "rZScale"), calcZScale());
-    gl.uniform3f(gl.getUniformLocation(renderer.premarchProgram, "uClipBox"),
-        state.clipSize[0], state.clipSize[1], state.clipSize[2]);
-    renderPass();
+    var nViews = getHzViewCount();
+    for (var vi = 0; vi < nViews; vi++) {
+        var premarchProgram = renderer.premarchPrograms[vi];
+        var raymarchProgram = renderer.raymarchPrograms[vi];
 
-    // pooling
-    gl.useProgram(renderer.poolProgram);
-    gl.bindFramebuffer(gl.FRAMEBUFFER, renderer.poolTarget.framebuffer);
-    setPositionBuffer(gl, renderer.poolProgram);
-    gl.activeTexture(gl.TEXTURE0);
-    gl.bindTexture(gl.TEXTURE_2D, renderer.premarchTarget.texture);
-    gl.uniform1i(gl.getUniformLocation(renderer.poolProgram, "iChannel0"), 0);
-    gl.uniform2i(gl.getUniformLocation(renderer.poolProgram, "iResolution"),
-        state.premarchWidth, state.premarchHeight);
-    renderPass();
+        // premarch
+        gl.viewport(0, 0, state.premarchWidth, state.premarchHeight);
+        gl.useProgram(premarchProgram);
+        gl.bindFramebuffer(gl.FRAMEBUFFER, renderer.premarchTarget.framebuffer);
+        setPositionBuffer(gl, premarchProgram);
+        gl.uniform1f(gl.getUniformLocation(premarchProgram, "ZERO"), 0.0);
+        gl.uniformMatrix4fv(
+            gl.getUniformLocation(premarchProgram, "transformMatrix"),
+            false,
+            mat4ToFloat32Array(transformMatrix));
+        gl.uniform1f(gl.getUniformLocation(premarchProgram, "iTime"), state.iTime);
+        gl.uniform2f(gl.getUniformLocation(premarchProgram, "screenCenter"),
+            state.screenCenter.x, state.screenCenter.y);
+        gl.uniform1f(gl.getUniformLocation(premarchProgram, "rZScale"), calcZScale());
+        gl.uniform3f(gl.getUniformLocation(premarchProgram, "uClipBox"),
+            state.clipSize[0], state.clipSize[1], state.clipSize[2]);
+        renderPass();
 
-    // render image
-    gl.viewport(0, 0, state.width, state.height);
-    gl.useProgram(renderer.raymarchProgram);
-    gl.bindFramebuffer(gl.FRAMEBUFFER, antiAliaser.renderFramebuffer);
-    setPositionBuffer(gl, renderer.raymarchProgram);
-    gl.uniform1f(gl.getUniformLocation(renderer.raymarchProgram, "ZERO"), 0.0);
-    gl.activeTexture(gl.TEXTURE0);
-    gl.bindTexture(gl.TEXTURE_2D, renderer.poolTarget.texture);
-    gl.uniform1i(gl.getUniformLocation(renderer.raymarchProgram, "iChannel0"), 0);
-    gl.uniformMatrix4fv(
-        gl.getUniformLocation(renderer.raymarchProgram, "transformMatrix"),
-        false,
-        mat4ToFloat32Array(transformMatrix));
-    gl.uniform1f(gl.getUniformLocation(renderer.raymarchProgram, "iTime"), state.iTime);
-    gl.uniform2f(gl.getUniformLocation(renderer.raymarchProgram, "screenCenter"),
-        state.screenCenter.x, state.screenCenter.y);
-    gl.uniform1f(gl.getUniformLocation(renderer.raymarchProgram, "uScale"), state.scale);
-    gl.uniform3f(gl.getUniformLocation(renderer.raymarchProgram, "uClipBox"),
-        state.clipSize[0], state.clipSize[1], state.clipSize[2]);
-    gl.uniform3f(gl.getUniformLocation(renderer.raymarchProgram, "LDIR"),
-        lightDir[0], lightDir[1], lightDir[2]);
-    gl.uniform1i(gl.getUniformLocation(renderer.raymarchProgram, "lAxes"), state.lAxes);
-    gl.uniform1f(gl.getUniformLocation(renderer.raymarchProgram, "rZScale"), calcZScale());
-    gl.uniform1f(gl.getUniformLocation(renderer.raymarchProgram, "rBrightness"), state.rBrightness);
-    renderPass();
+        // pooling
+        gl.useProgram(renderer.poolProgram);
+        gl.bindFramebuffer(gl.FRAMEBUFFER, renderer.poolTarget.framebuffer);
+        setPositionBuffer(gl, renderer.poolProgram);
+        gl.activeTexture(gl.TEXTURE0);
+        gl.bindTexture(gl.TEXTURE_2D, renderer.premarchTarget.texture);
+        gl.uniform1i(gl.getUniformLocation(renderer.poolProgram, "iChannel0"), 0);
+        gl.uniform2i(gl.getUniformLocation(renderer.poolProgram, "iResolution"),
+            state.premarchWidth, state.premarchHeight);
+        renderPass();
+
+        // render image
+        var vx0 = Math.round(state.width * vi / nViews);
+        var vx1 = Math.round(state.width * (vi + 1) / nViews);
+        gl.viewport(vx0, 0, vx1 - vx0, state.height);
+        gl.useProgram(raymarchProgram);
+        gl.bindFramebuffer(gl.FRAMEBUFFER, antiAliaser.renderFramebuffer);
+        setPositionBuffer(gl, raymarchProgram);
+        gl.uniform1f(gl.getUniformLocation(raymarchProgram, "ZERO"), 0.0);
+        gl.activeTexture(gl.TEXTURE0);
+        gl.bindTexture(gl.TEXTURE_2D, renderer.poolTarget.texture);
+        gl.uniform1i(gl.getUniformLocation(raymarchProgram, "iChannel0"), 0);
+        gl.uniformMatrix4fv(
+            gl.getUniformLocation(raymarchProgram, "transformMatrix"),
+            false,
+            mat4ToFloat32Array(transformMatrix));
+        gl.uniform1f(gl.getUniformLocation(raymarchProgram, "iTime"), state.iTime);
+        gl.uniform2f(gl.getUniformLocation(raymarchProgram, "screenCenter"),
+            state.screenCenter.x, state.screenCenter.y);
+        gl.uniform1f(gl.getUniformLocation(raymarchProgram, "uScale"), state.scale);
+        gl.uniform3f(gl.getUniformLocation(raymarchProgram, "uClipBox"),
+            state.clipSize[0], state.clipSize[1], state.clipSize[2]);
+        gl.uniform3f(gl.getUniformLocation(raymarchProgram, "LDIR"),
+            lightDir[0], lightDir[1], lightDir[2]);
+        gl.uniform1i(gl.getUniformLocation(raymarchProgram, "lAxes"), state.lAxes);
+        gl.uniform1f(gl.getUniformLocation(raymarchProgram, "rZScale"), calcZScale());
+        gl.uniform1f(gl.getUniformLocation(raymarchProgram, "rBrightness"), state.rBrightness);
+        renderPass();
+    }
 
     // var pixels = new Uint8Array(4*state.width*state.height);
     // gl.readPixels(0, 0, state.width, state.height, gl.RGBA, gl.UNSIGNED_BYTE, pixels);
     // console.log(getImage(pixels, state.width, state.height));
 
     // render image gradient
+    gl.viewport(0, 0, state.width, state.height);
     gl.useProgram(antiAliaser.imgGradProgram);
     gl.bindFramebuffer(gl.FRAMEBUFFER, antiAliaser.imgGradFramebuffer);
     setPositionBuffer(gl, antiAliaser.imgGradProgram);
@@ -273,7 +291,7 @@ function updateBuffers() {
     let gl = renderer.gl;
     state.width = canvas.width = canvas.style.width = window.innerWidth;
     state.height = canvas.height = canvas.style.height = window.innerHeight;
-    state.premarchWidth = Math.round(state.width / 4);
+    state.premarchWidth = Math.round(state.width / getHzViewCount() / 4);
     state.premarchHeight = Math.round(state.height / 4);
 
     var oldPremarchTarget = renderer.premarchTarget;
@@ -308,7 +326,9 @@ function initRenderer() {
         } catch (e) { }
         if (timeDependent && state.iTime == -1.0)
             startTime = performance.now();
-        var screenCenter = state.defaultScreenCenter ? calcScreenCenter() : state.screenCenter;
+        var screenCenter = state.defaultScreenCenter ?
+            (renderer.hzViews == null ? calcScreenCenter() : { x: 0.5, y: 0.5 }) :
+            state.screenCenter;
         state.screenCenter = screenCenter;
         if ((screenCenter.x != oldScreenCenter.x || screenCenter.y != oldScreenCenter.y)
             || state.renderNeeded) {
@@ -317,7 +337,8 @@ function initRenderer() {
             try {
                 localStorage.setItem(state.name, JSON.stringify(state));
             } catch (e) { console.error(e); }
-            var transformMatrix = calcTransformMatrix(state);
+            var transformMatrix = calcTransformMatrix(state, true, { x: 0.5, y: 0.5 },
+                (canvas.width / getHzViewCount()) / canvas.height);
             var lightDir = calcLightDirection(transformMatrix, state.rTheta, state.rPhi);
             drawScene(state, transformMatrix, lightDir);
             renderLegend(state);
@@ -424,10 +445,13 @@ function updateShaderFunction(funCode, funGradCode, params) {
     let gl = renderer.gl;
     state.renderNeeded = true;  // update cursor
 
-    function sub(shaderSource) {
+    var hzList = renderer.hzViews == null ?
+        [params == undefined ? "" : params.sHz] : renderer.hzViews;
+
+    function sub(shaderSource, hz) {
         shaderSource = shaderSource.replaceAll("{%FUN%}", funCode);
         shaderSource = shaderSource.replaceAll("{%FUNGRAD%}", funGradCode);
-        shaderSource = shaderSource.replaceAll("{%HZ%}", params.sHz);
+        shaderSource = shaderSource.replaceAll("{%HZ%}", hz);
         shaderSource = shaderSource.replaceAll("{%CLIP%}", Number(params.sClip));
         shaderSource = shaderSource.replaceAll("{%FIELD%}", params.sField);
         shaderSource = shaderSource.replaceAll("{%STEP_SIZE%}", params.sStep);
@@ -448,55 +472,67 @@ function updateShaderFunction(funCode, funGradCode, params) {
         renderer.poolProgram = poolProgram;
     }
 
+    if (renderer.premarchPrograms == null)
+        renderer.premarchPrograms = new Array(hzList.length).fill(null);
+    if (renderer.raymarchPrograms == null)
+        renderer.raymarchPrograms = new Array(hzList.length).fill(null);
+
     // parsing error
     if (funCode == null) {
-        if (renderer.premarchProgram != null) {
-            gl.deleteProgram(renderer.premarchProgram);
-            renderer.premarchProgram = null;
+        for (var vi = 0; vi < hzList.length; vi++) {
+            if (renderer.premarchPrograms[vi] != null) {
+                gl.deleteProgram(renderer.premarchPrograms[vi]);
+                renderer.premarchPrograms[vi] = null;
+            }
+            if (renderer.raymarchPrograms[vi] != null) {
+                gl.deleteProgram(renderer.raymarchPrograms[vi]);
+                renderer.raymarchPrograms[vi] = null;
+            }
         }
-        if (renderer.raymarchProgram != null) {
-            gl.deleteProgram(renderer.raymarchProgram);
-            renderer.raymarchProgram = null;
-        }
+        renderer.premarchProgram = null;
+        renderer.raymarchProgram = null;
         return;
     }
 
     // cache code
     if (updateShaderFunction.prevCode == undefined)
         updateShaderFunction.prevCode = {
-            premarchSource: "",
+            premarchSources: new Array(hzList.length).fill(""),
+            raymarchSources: new Array(hzList.length).fill(""),
             raymarchSource: ""
         };
     var prevCode = updateShaderFunction.prevCode;
-    var premarchSource = sub(renderer.premarchSource);
-    var raymarchSource = sub(renderer.raymarchSource);
 
     console.time("compile shader");
 
-    // premarching program
-    if (prevCode.premarchSource != premarchSource || renderer.premarchProgram == null) {
-        if (renderer.premarchProgram != null) {
-            gl.deleteProgram(renderer.premarchProgram);
-            renderer.premarchProgram = null;
-        }
-        // try {
-            renderer.premarchProgram = createShaderProgram(gl, renderer.vsSource, premarchSource);
-        // } catch (e) { console.error(e); }
-        prevCode.premarchSource = premarchSource;
-    }
+    // on compile failure, keep the null set below so drawScene is blocked
+    renderer.premarchProgram = null;
+    renderer.raymarchProgram = null;
 
-    // raymarching program
-    if (prevCode.raymarchSource != raymarchSource || renderer.raymarchProgram == null) {
-        if (renderer.raymarchProgram != null) {
-            gl.deleteProgram(renderer.raymarchProgram);
-            renderer.raymarchProgram = null;
+    for (var vi = 0; vi < hzList.length; vi++) {
+        var premarchSource = sub(renderer.premarchSource, hzList[vi]);
+        if (prevCode.premarchSources[vi] != premarchSource || renderer.premarchPrograms[vi] == null) {
+            if (renderer.premarchPrograms[vi] != null) {
+                gl.deleteProgram(renderer.premarchPrograms[vi]);
+                renderer.premarchPrograms[vi] = null;
+            }
+            renderer.premarchPrograms[vi] = createShaderProgram(gl, renderer.vsSource, premarchSource);
+            prevCode.premarchSources[vi] = premarchSource;
         }
-        // try {
-            renderer.raymarchProgram = createShaderProgram(gl, renderer.vsSource, raymarchSource);
-        // }
-        // catch (e) { console.error(e); }
-        prevCode.raymarchSource = raymarchSource;
+        var raymarchSource = sub(renderer.raymarchSource, hzList[vi]);
+        if (prevCode.raymarchSources[vi] != raymarchSource || renderer.raymarchPrograms[vi] == null) {
+            if (renderer.raymarchPrograms[vi] != null) {
+                gl.deleteProgram(renderer.raymarchPrograms[vi]);
+                renderer.raymarchPrograms[vi] = null;
+            }
+            renderer.raymarchPrograms[vi] = createShaderProgram(gl, renderer.vsSource, raymarchSource);
+            prevCode.raymarchSources[vi] = raymarchSource;
+        }
     }
+    renderer.premarchProgram = renderer.premarchPrograms[0];
+    renderer.raymarchProgram = renderer.raymarchPrograms[0];
+    // used by the render loop to test time dependency
+    prevCode.raymarchSource = prevCode.raymarchSources.join("\n");
 
     console.timeEnd("compile shader");
 }

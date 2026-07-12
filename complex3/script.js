@@ -76,6 +76,9 @@ document.body.onload = function (event) {
     UpdateFunctionInputConfig.implicitMode = false;
     UpdateFunctionInputConfig.warnNaN = false;
 
+    // three synchronized views: Re(z), Im(z), |z|
+    renderer.hzViews = ["z.x", "z.y", "length(z)"];
+
     // init viewport
     resetState({
         rz: 0.15 * Math.PI,
