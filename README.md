@@ -24,7 +24,40 @@ python3 -m http.server 8000
 
 Then open http://localhost:8000/ in a browser (or a specific grapher, e.g. http://localhost:8000/complex3/).
 
-http://localhost:8000/complex3/
+---
+
+## Repository Structure
+
+Each grapher lives in its own folder and is opened at `/<folder>/` in the browser. A grapher folder typically contains `index.html` (UI layout), `script.js` (built-in examples and grapher setup), one or more app-specific `*.glsl` shaders, and `help.md` (the in-app help content, loaded at runtime).
+
+### Graphers
+
+| Folder | Tool |
+| --- | --- |
+| `complex/` | 2D complex domain coloring grapher |
+| `complex3/` | 3D complex function grapher; shows Re(z), Im(z), and \|z\| side-by-side with synchronized rotation |
+| `implicit2/` | 2D implicit curve grapher (experimental) |
+| `implicit3/` | 3D implicit surface grapher, with scalar field visualization and transparency |
+| `implicit3-rt/` | Path tracer for implicit surfaces; includes deep-learning denoising models (`denoise_models/`, `export_model.py`) |
+| `paramcurve2/` | 2D parametric curve grapher |
+| `paramsurf/` | 3D parametric surface grapher (rasterization pipeline) |
+| `ode2/` | 2D vector field / streamline plotter |
+| `meshgen2/`, `meshgen3/` | 2D/3D mesh generation from math equations, written in C++ and compiled to WebAssembly |
+| `autodiff/` | Experimental code generator: parses an equation and emits code with automatic differentiation |
+
+The `meshgen*` folders ship prebuilt `module.js`/`module.wasm`, so they run without any build step. To rebuild after changing the C++ sources, run `build.bash` inside the folder (requires [Emscripten](https://emscripten.org/); [GLM](https://github.com/g-truc/glm) is expected at the repository root, which is gitignored).
+
+### Shared code
+
+| Folder | Contents |
+| --- | --- |
+| `scripts/` | Shared JavaScript. Equation pipeline: `parser.js` (equation parser), `functions.js` (built-in math functions), `codegen.js` (GLSL/C++ code generation), `latex.js` (LaTeX preview). UI: `parameter.js` (control panel parameters, state saving, input handling). Renderers: `render-gl.js` (WebGL utilities), `render-3d.js` (camera matrices, axes legend), `render-raymarch.js` (two-pass raymarching, used by `implicit3` and `complex3`), `render-rt.js` (path tracing), `render-2d.js`/`render-canvas.js` (2D graphers), `render-paramsurf.js` (rasterization), `render-emscripten.js` (WebAssembly bridge for meshgen), `dnn.js` (GPU inference for the denoiser) |
+| `shaders/` | Shared GLSL: math evaluation (`functions.glsl`, `complex.glsl`, `complex-zeta.glsl`), post-processing and anti-aliasing (`frag-aa.glsl`, `frag-imggrad.glsl`, `frag-pool.glsl`, `frag-tonemap.glsl`), denoiser layers (`dnn-*.glsl`), fullscreen-quad vertex shader (`vert-pixel.glsl`) |
+| `include/` | Shared C++ headers for mesh generation ([Triangle](https://www.cs.cmu.edu/~quake/triangle.html) library, GL helpers, sparse linear algebra, mesh export) |
+| `styles/` | Shared CSS (`style.css`) |
+| `assets/` | Gallery screenshots used by this README and page previews |
+
+Scripts, shaders, and help files are fetched at runtime with an hourly cache-busting query string (`?nocache=`), which is why the pages must be served over HTTP rather than opened as `file://`.
 
 ---
 
